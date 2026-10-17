@@ -4,6 +4,7 @@
 
 ## 环境
 
+- 扩展版本：0.2.0
 - Windows 10/11
 - Node.js 24.19.0
 - pnpm 11.25.0
@@ -65,6 +66,7 @@
 - 许可证：GPL-3.0
 - 发布流程：本地创建提交 → 推送 main → GitHub Actions `CI` 运行
 - GitHub Actions 已实际执行并成功通过：安装依赖、类型检查、Lint、单元与集成测试、生产构建、密钥扫描
+- 0.2.0 功能提交 `84eec2a` 的 CI 运行 `39039026818` 已成功完成
 - 远程仓库克隆后独立执行密钥扫描：通过
 - 远程文件树检查：README、LICENSE、Manifest、核心源码、测试与 CI 配置均存在；未上传 `node_modules`、`dist` 或 `.env`
 
