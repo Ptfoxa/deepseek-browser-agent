@@ -6,6 +6,10 @@ DeepSeek Browser Agent 是一个由 DeepSeek API 驱动的 Chrome 侧边栏网�
 
 仓库：[https://github.com/Ptfoxa/deepseek-browser-agent](https://github.com/Ptfoxa/deepseek-browser-agent)
 
+项目主页：[https://ptfoxa.github.io/deepseek-browser-agent/](https://ptfoxa.github.io/deepseek-browser-agent/)
+
+最新发布：[https://github.com/Ptfoxa/deepseek-browser-agent/releases/latest](https://github.com/Ptfoxa/deepseek-browser-agent/releases/latest)
+
 > 当前版本为 MVP。所有修改只作用于当前页面 DOM，**不会自动保存到网站服务器**，也不会替你提交表单、发送消息、发布内容、删除数据或完成支付。
 
 ## 功能

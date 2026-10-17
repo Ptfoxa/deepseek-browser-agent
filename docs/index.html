@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="DeepSeek Browser Agent：一个由 DeepSeek API 驱动、由用户逐次授权的 Chrome 侧边栏网页助手。"
+    />
+    <title>DeepSeek Browser Agent · Chrome 侧边栏网页助手</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #07111f;
+        --panel: #0f1b2d;
+        --panel-2: #15243a;
+        --ink: #f4f7fb;
+        --muted: #a8b5c8;
+        --line: #263b56;
+        --blue: #78a8ff;
+        --violet: #b29dff;
+        --green: #75e0a7;
+        --amber: #fec84b;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+        font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(900px 460px at 85% -5%, rgba(111, 91, 242, 0.2), transparent 65%),
+          radial-gradient(700px 420px at -5% 12%, rgba(47, 111, 237, 0.18), transparent 60%),
+          var(--bg);
+        color: var(--ink);
+        line-height: 1.65;
+      }
+
+      a {
+        color: var(--blue);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .wrap {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 26px 0;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .mark {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: linear-gradient(145deg, #3c7cf6, #6f5bf2);
+        display: grid;
+        place-items: center;
+        box-shadow: 0 8px 24px rgba(47, 111, 237, 0.35);
+      }
+
+      .mark::after {
+        content: '';
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 3px solid #fff;
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 18px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 48px;
+        align-items: center;
+        padding: 64px 0 48px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        border: 1px solid #31527c;
+        border-radius: 999px;
+        color: var(--green);
+        background: rgba(18, 128, 92, 0.12);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      h1 {
+        margin: 17px 0 14px;
+        font-size: clamp(38px, 5vw, 64px);
+        line-height: 1.05;
+        letter-spacing: -0.045em;
+      }
+
+      h1 span {
+        background: linear-gradient(90deg, var(--blue), var(--violet));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .lead {
+        color: var(--muted);
+        font-size: 17px;
+        max-width: 620px;
+        margin: 0 0 12px;
+      }
+
+      .lead.en {
+        font-size: 13px;
+        line-height: 1.7;
+        color: #8190a7;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 26px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 11px 17px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .button:hover {
+        text-decoration: none;
+        border-color: #4d7df8;
+        background: rgba(77, 125, 248, 0.1);
+      }
+
+      .button.primary {
+        border-color: #4d7df8;
+        background: linear-gradient(145deg, #3d72ed, #6f5bf2);
+        box-shadow: 0 10px 28px rgba(47, 111, 237, 0.26);
+      }
+
+      .button.primary:hover {
+        background: linear-gradient(145deg, #4f83f6, #7a68f5);
+      }
+
+      .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 26px;
+      }
+
+      .badge {
+        font-size: 11px;
+        color: var(--muted);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 9px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .shot-wrap {
+        position: relative;
+      }
+
+      .shot-wrap::before {
+        content: '';
+        position: absolute;
+        inset: 8% 5% 0;
+        background: linear-gradient(135deg, rgba(47, 111, 237, 0.35), rgba(111, 91, 242, 0.25));
+        filter: blur(38px);
+        border-radius: 40px;
+      }
+
+      .shot {
+        position: relative;
+        display: block;
+        width: 100%;
+        border-radius: 18px;
+        border: 1px solid #345274;
+        box-shadow: var(--shadow);
+        background: var(--panel);
+      }
+
+      .shot.small {
+        width: 42%;
+        position: absolute;
+        right: -10px;
+        bottom: -24px;
+        border-width: 2px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+      }
+
+      section {
+        padding: 58px 0;
+        border-top: 1px solid rgba(38, 59, 86, 0.65);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: clamp(25px, 3vw, 34px);
+        letter-spacing: -0.03em;
+      }
+
+      .section-head p {
+        margin: 0;
+        color: var(--muted);
+        max-width: 460px;
+        font-size: 14px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .card {
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(21, 36, 58, 0.86), rgba(15, 27, 45, 0.86));
+      }
+
+      .card .icon {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 13px;
+        border-radius: 10px;
+        background: #132b48;
+        color: var(--blue);
+        font-size: 17px;
+      }
+
+      .card h3 {
+        margin: 0 0 6px;
+        font-size: 15px;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+      }
+
+      .step {
+        position: relative;
+        min-height: 130px;
+        padding: 17px;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        background: rgba(15, 27, 45, 0.72);
+      }
+
+      .step:not(:last-child)::after {
+        content: '→';
+        position: absolute;
+        right: -13px;
+        top: 48%;
+        color: #52749d;
+        font-size: 16px;
+      }
+
+      .step em {
+        font-style: normal;
+        color: var(--blue);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+
+      .step strong {
+        display: block;
+        margin: 8px 0 4px;
+        font-size: 14px;
+      }
+
+      .step span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .install {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+
+      .install-box {
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+      }
+
+      .install-box h3 {
+        margin: 0 0 10px;
+        font-size: 16px;
+      }
+
+      ol {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      li {
+        margin: 7px 0;
+      }
+
+      code {
+        padding: 2px 5px;
+        border-radius: 5px;
+        background: #102a43;
+        color: #cfe0ff;
+        font-size: 12px;
+      }
+
+      pre {
+        margin: 12px 0 0;
+        padding: 14px;
+        overflow: auto;
+        border-radius: 10px;
+        border: 1px solid #274364;
+        background: #071526;
+        color: #cfe0ff;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .notice {
+        margin-top: 18px;
+        padding: 13px 15px;
+        border-left: 3px solid var(--amber);
+        border-radius: 0 9px 9px 0;
+        background: rgba(254, 200, 75, 0.08);
+        color: #f7d985;
+        font-size: 12px;
+      }
+
+      .links {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .link-card {
+        display: block;
+        padding: 15px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: rgba(15, 27, 45, 0.7);
+        color: var(--ink);
+        font-size: 13px;
+      }
+
+      .link-card span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 28px 0 40px;
+        color: #73839b;
+        font-size: 12px;
+      }
+
+      @media (max-width: 860px) {
+        .hero {
+          grid-template-columns: 1fr;
+          gap: 28px;
+          padding-top: 38px;
+        }
+
+        .shot.small {
+          display: none;
+        }
+
+        .grid,
+        .links {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .flow,
+        .install {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .step:nth-child(2)::after {
+          display: none;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .wrap {
+          width: min(100% - 28px, 1120px);
+        }
+
+        nav {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .grid,
+        .links,
+        .flow,
+        .install {
+          grid-template-columns: 1fr;
+        }
+
+        .step::after {
+          display: none;
+        }
+
+        .section-head {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <nav>
+        <div class="brand"><span class="mark"></span> DeepSeek Browser Agent</div>
+        <div class="nav-links">
+          <a href="#features">功能</a>
+          <a href="#install">安装</a>
+          <a href="#security">安全</a>
+          <a href="https://github.com/Ptfoxa/deepseek-browser-agent">GitHub</a>
+        </div>
+      </nav>
+
+      <main>
+        <section class="hero" style="border-top: 0; padding-top: 42px">
+          <div>
+            <span class="eyebrow"><span class="dot"></span> v0.2.0 · MVP released</span>
+            <h1>网页操作，<br /><span>由你批准。</span></h1>
+            <p class="lead">
+              DeepSeek Browser Agent 是一个 Chrome 侧边栏网页助手：读取你选择的网页，生成结构化计划，
+              在本机完成风险检查，只有你确认后才执行允许列表内的修改。
+            </p>
+            <p class="lead en">
+              A human-in-the-loop Chrome side-panel agent powered by the DeepSeek API. It reads only the
+              active page you choose, proposes schema-validated actions, and requires explicit approval
+              before any DOM change.
+            </p>
+            <div class="hero-actions">
+              <a class="button primary" href="https://github.com/Ptfoxa/deepseek-browser-agent/releases/latest">
+                下载 v0.2.0
+              </a>
+              <a class="button" href="https://github.com/Ptfoxa/deepseek-browser-agent">查看源码</a>
+              <a class="button" href="#install">安装步骤</a>
+            </div>
+            <div class="badges">
+              <span class="badge">Chrome MV3</span>
+              <span class="badge">Side Panel</span>
+              <span class="badge">DeepSeek API</span>
+              <span class="badge">GPL-3.0</span>
+              <span class="badge">Human approved</span>
+            </div>
+          </div>
+          <div class="shot-wrap">
+            <img class="shot" src="assets/sidepanel-plan.png" alt="DeepSeek Browser Agent 操作预览界面" />
+            <img class="shot small" src="assets/sidepanel-settings.png" alt="深色主题设置界面" />
+          </div>
+        </section>
+
+        <section id="features">
+          <div class="section-head">
+            <h2>安全地让 AI 看懂网页</h2>
+            <p>模型负责理解与规划；扩展负责权限、Schema 校验、执行和撤销。模型输出没有直接执行权限。</p>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <div class="icon">◎</div>
+              <h3>先预览，再执行</h3>
+              <p>每次修改展示目标元素、修改前后内容、风险等级和预期结果，批准只对当前计划有效。</p>
+            </div>
+            <div class="card">
+              <div class="icon">↺</div>
+              <h3>校验与撤销</h3>
+              <p>执行后逐项检查实际 DOM；页面或目标内容变化时停止，可逆修改支持安全撤销。</p>
+            </div>
+            <div class="card">
+              <div class="icon">⌁</div>
+              <h3>敏感数据过滤</h3>
+              <p>密码、邮箱、电话、支付字段不读取；正文 PII 先脱敏，链接查询参数被移除。</p>
+            </div>
+            <div class="card">
+              <div class="icon">Aa</div>
+              <h3>字号与主题</h3>
+              <p>小/标准/大三档字号，以及日间、夜间和跟随系统主题，保存在本机设置中。</p>
+            </div>
+            <div class="card">
+              <div class="icon">◌</div>
+              <h3>缓存命中率</h3>
+              <p>底部实时展示 DeepSeek Prompt Cache 的会话命中率和命中/未命中 tokens。</p>
+            </div>
+            <div class="card">
+              <div class="icon">▣</div>
+              <h3>截图框选</h3>
+              <p>截取当前标签页、框选区域并附加到聊天；PNG 会随消息发送给视觉模型。</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-head">
+            <h2>受控执行流程</h2>
+            <p>从页面读取到修改验证，每一步都有本地边界。</p>
+          </div>
+          <div class="flow">
+            <div class="step"><em>01 · READ</em><strong>读取当前页</strong><span>标题、正文、表单和元素 ID，敏感字段跳出。</span></div>
+            <div class="step"><em>02 · PLAN</em><strong>生成计划</strong><span>DeepSeek JSON 输出经严格 Zod Schema 校验。</span></div>
+            <div class="step"><em>03 · APPROVE</em><strong>用户授权</strong><span>绑定计划哈希、标签页、页面指纹和有效期。</span></div>
+            <div class="step"><em>04 · VERIFY</em><strong>执行并校验</strong><span>只执行允许列表操作，失败停止，支持撤销。</span></div>
+          </div>
+        </section>
+
+        <section id="install">
+          <div class="section-head">
+            <h2>安装 v0.2.0</h2>
+            <p>Chrome 114+，Windows 10/11。使用 Release 中的 ZIP 或从源码构建。</p>
+          </div>
+          <div class="install">
+            <div class="install-box">
+              <h3>使用 Release ZIP</h3>
+              <ol>
+                <li>从 <a href="https://github.com/Ptfoxa/deepseek-browser-agent/releases/latest">最新 Release</a> 下载 ZIP 并解压。</li>
+                <li>打开 <code>chrome://extensions/</code>，开启“开发者模式”。</li>
+                <li>点击“加载已解压的扩展程序”，选择解压后包含 <code>manifest.json</code> 的目录。</li>
+                <li>点击扩展图标打开侧边栏，在设置中填写 DeepSeek API Key。</li>
+              </ol>
+            </div>
+            <div class="install-box">
+              <h3>从源码构建</h3>
+              <ol>
+                <li>安装 Node.js 22/24 与 pnpm 11。</li>
+                <li>克隆仓库并安装依赖。</li>
+                <li>构建后加载 <code>dist</code> 目录。</li>
+              </ol>
+              <pre>git clone https://github.com/Ptfoxa/deepseek-browser-agent.git
+cd deepseek-browser-agent
+pnpm install
+pnpm build</pre>
+              <div class="notice">
+                首次分析某个网站时 Chrome 会请求该网站的具体访问权限。扩展不默认申请所有网站权限；
+                截图功能需要 activeTab 临时权限，建议通过扩展图标打开侧边栏。
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="security">
+          <div class="section-head">
+            <h2>安全边界</h2>
+            <p>网页、网页脚本生成的文字、模型输出和第三方响应都被视为不可信数据。</p>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <div class="icon">✓</div>
+              <h3>不执行模型代码</h3>
+              <p>不使用 eval/new Function；不接受模型提供的 CSS 选择器、JavaScript、HTML 或任意 URL。</p>
+            </div>
+            <div class="card">
+              <div class="icon">✕</div>
+              <h3>阻止高风险外部影响</h3>
+              <p>提交、发送、发布、删除、购买、支付、登录等高风险动作不会被装成普通点击自动执行。</p>
+            </div>
+            <div class="card">
+              <div class="icon">⌘</div>
+              <h3>密钥隔离</h3>
+              <p>API Key 仅由 Service Worker 使用，不进入 Content Script、日志、源码或构建产物。</p>
+            </div>
+          </div>
+          <div class="links">
+            <a class="link-card" href="https://github.com/Ptfoxa/deepseek-browser-agent/blob/main/docs/security-audit.md">
+              安全审计<span>权限、提示注入、竞态和残余风险</span>
+            </a>
+            <a class="link-card" href="https://github.com/Ptfoxa/deepseek-browser-agent/blob/main/docs/test-report.md">
+              测试记录<span>34 项单元/集成测试与 8 项 Chrome E2E</span>
+            </a>
+            <a class="link-card" href="https://github.com/Ptfoxa/deepseek-browser-agent">
+              源码仓库<span>README、源码、许可证和 CI</span>
+            </a>
+            <a class="link-card" href="https://github.com/Ptfoxa/deepseek-browser-agent/releases">
+              Releases<span>下载可安装的构建产物</span>
+            </a>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <span>DeepSeek Browser Agent · GPL-3.0 · 2026</span>
+        <span>DOM changes are local until the website saves them.</span>
+      </footer>
+    </div>
+  </body>
+</html>
