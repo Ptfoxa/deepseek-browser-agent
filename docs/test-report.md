@@ -51,8 +51,18 @@
 4. 本地模拟 DeepSeek API：分析 → 生成计划 → 批准 → 实际修改 `<h1>` → 撤销恢复。
 5. `chrome://` 内部页面返回 `unsupported_page`，不注入脚本。
 
+## GitHub 发布验证
+
+- 仓库：https://github.com/Ptfoxa/deepseek-browser-agent
+- 可见性：Public
+- 默认分支：main
+- 许可证：GPL-3.0
+- 发布流程：本地创建提交 → 推送 main → GitHub Actions `CI` 运行
+- GitHub Actions 已实际执行并成功通过：安装依赖、类型检查、Lint、单元与集成测试、生产构建、密钥扫描
+- 远程仓库克隆后独立执行密钥扫描：通过
+- 远程文件树检查：README、LICENSE、Manifest、核心源码、测试与 CI 配置均存在；未上传 `node_modules`、`dist` 或 `.env`
+
 ## 未执行项
 
 - 真实 DeepSeek API 请求：需要用户提供自己的 API Key；使用本地模拟 API 验证了完整协议链路。
-- GitHub 远程 CI：仓库尚未上传，无法观察 Actions 结果。
 - 真实人工工具栏点击：自动化直接打开侧边栏页面；建议用户加载扩展后点击扩展图标做一次人工确认。
