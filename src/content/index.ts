@@ -34,7 +34,7 @@ async function handle(message: unknown): Promise<unknown> {
   }
 
   if (type === 'PING') {
-    return { ok: true, version: '0.1.0' };
+    return { ok: true, version: '0.2.0' };
   }
 
   if (type === 'READ_PAGE') {

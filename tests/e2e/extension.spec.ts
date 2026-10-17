@@ -38,7 +38,12 @@ test.beforeAll(async () => {
         response.end(
           JSON.stringify({
             choices: [{ message: { content: JSON.stringify(payload) } }],
-            usage: { prompt_tokens: 10, completion_tokens: 10 },
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 10,
+              prompt_cache_hit_tokens: 80,
+              prompt_cache_miss_tokens: 20,
+            },
           }),
         );
       });
@@ -64,6 +69,8 @@ test.beforeAll(async () => {
     host_permissions: string[];
   };
   manifest.host_permissions.push('http://127.0.0.1/*');
+  // captureVisibleTab needs activeTab or <all_urls>; grant only in the test copy.
+  manifest.host_permissions.push('<all_urls>');
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
   context = await chromium.launchPersistentContext('', {
@@ -151,11 +158,31 @@ test('reads a real page through the service worker and filters sensitive values'
   expect(missing.error.code).toBe('api_key_missing');
 });
 
+test('analyzes the active page from the side-panel button', async () => {
+  const analyzeUrl = `${fixtureUrl}?case=button`;
+  const fixturePage = await context.newPage();
+  await fixturePage.goto(analyzeUrl);
+  const panel = await openPanel();
+  await panel.evaluate(async (url: string) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((candidate) => candidate.url === url);
+    if (tab?.id) await chrome.tabs.update(tab.id, { active: true });
+  }, analyzeUrl);
+  await panel.locator('.analyze-button').dispatchEvent('click');
+  await expect(panel.getByText('页面摘要')).toBeVisible();
+});
+
 test('saves and deletes the API key without exposing it to the UI state', async () => {
   const panel = await openPanel();
   await panel.setViewportSize({ width: 380, height: 900 });
   await panel.locator('button[title="设置"]').click();
   await expect(panel.getByText('会发送给 DeepSeek 的内容')).toBeVisible();
+  await panel.getByRole('button', { name: '大', exact: true }).click();
+  await panel.getByRole('button', { name: '夜间', exact: true }).click();
+  await panel.getByRole('button', { name: '保存设置', exact: true }).click();
+  await expect(panel.locator('.notice.ok')).toContainText('设置已保存');
+  expect(await panel.evaluate(() => document.documentElement.dataset.fontSize)).toBe('large');
+  expect(await panel.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
   await panel.screenshot({ path: 'test-results/sidepanel-settings.png', fullPage: true });
   const fakeKey = 'test-key-e2e-12345678';
   const saved = await panel.evaluate(async (key: string) => {
@@ -185,6 +212,45 @@ test('saves and deletes the API key without exposing it to the UI state', async 
   expect(deleted.data.settings.hasApiKey).toBe(false);
 });
 
+test('captures the current tab as a PNG for the screenshot tool', async () => {
+  const captureUrl = `${fixtureUrl}?case=capture`;
+  const fixturePage = await context.newPage();
+  await fixturePage.goto(captureUrl);
+  const panel = await openPanel();
+  await panel.setViewportSize({ width: 380, height: 900 });
+  await panel.evaluate(async (url: string) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((candidate) => candidate.url === url);
+    if (tab?.id) await chrome.tabs.update(tab.id, { active: true });
+  }, captureUrl);
+  const result = await panel.evaluate(async () =>
+    chrome.runtime.sendMessage({ type: 'CAPTURE_TAB' }),
+  );
+  expect(result.ok, result.error?.message).toBe(true);
+  expect(result.data.dataUrl.startsWith('data:image/png;base64,')).toBe(true);
+  expect(result.data.dataUrl.length).toBeGreaterThan(1000);
+});
+
+test('opens the crop modal and attaches a selected screenshot', async () => {
+  const captureUrl = `${fixtureUrl}?case=crop`;
+  const fixturePage = await context.newPage();
+  await fixturePage.goto(captureUrl);
+  const panel = await openPanel();
+  await panel.setViewportSize({ width: 380, height: 900 });
+  await panel.evaluate(async (url: string) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((candidate) => candidate.url === url);
+    if (tab?.id) await chrome.tabs.update(tab.id, { active: true });
+  }, captureUrl);
+  await panel.getByRole('button', { name: '截图当前标签页' }).click();
+  await expect(panel.getByText('框选截图')).toBeVisible();
+  await panel.screenshot({ path: 'test-results/screenshot-crop.png', fullPage: false });
+  await panel.getByRole('button', { name: '选择整个画面' }).click();
+  await panel.waitForTimeout(300);
+  await panel.getByRole('button', { name: '使用选中截图' }).click();
+  await expect(panel.getByText('当前标签页截图')).toBeVisible();
+});
+
 test('executes an approved plan against the real DOM and restores it with undo', async () => {
   const executeUrl = `${fixtureUrl}?case=execute`;
   const fixturePage = await context.newPage();
@@ -208,6 +274,8 @@ test('executes an approved plan against the real DOM and restores it with undo',
         timeoutMs: 30000,
         apiKeyAction: 'replace',
         apiKey: 'test-key-e2e-12345678',
+        fontSize: 'medium',
+        theme: 'light',
       }),
     apiBaseUrl,
   );
@@ -251,6 +319,8 @@ test('executes an approved plan against the real DOM and restores it with undo',
   expect(approved.ok).toBe(true);
   expect(approved.data.status).toBe('completed');
   expect(await fixturePage.locator('h1').textContent()).toBe('Updated heading');
+  await expect(panel.getByText('缓存命中率')).toBeVisible();
+  await expect(panel.getByText('80%')).toBeVisible();
 
   const undone = await panel.evaluate(async () => chrome.runtime.sendMessage({ type: 'UNDO' }));
   expect(undone.ok).toBe(true);

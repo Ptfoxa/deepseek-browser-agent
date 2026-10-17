@@ -97,7 +97,11 @@ export class SessionStore {
   }
 
   async save(data: SessionData): Promise<void> {
-    const safe = SessionDataSchema.safeParse(data);
+    const persisted = {
+      ...data,
+      messages: data.messages.map(({ attachment: _attachment, ...message }) => message),
+    };
+    const safe = SessionDataSchema.safeParse(persisted);
     if (!safe.success) {
       throw new Error('Session state failed validation');
     }

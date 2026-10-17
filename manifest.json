@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "DeepSeek Browser Agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DeepSeek-powered browser assistant that proposes page changes and executes only user-approved, allow-listed actions.",
   "minimum_chrome_version": "114",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel", "tabs"],
   "host_permissions": ["https://api.deepseek.com/*"],
-  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"

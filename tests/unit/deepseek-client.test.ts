@@ -42,17 +42,40 @@ describe('DeepSeek client', () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         choices: [{ message: { content: '{"reply":"ok","plan":null}' } }],
-        usage: { prompt_tokens: 10, completion_tokens: 5 },
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 5,
+          prompt_cache_hit_tokens: 8,
+          prompt_cache_miss_tokens: 2,
+        },
       }),
     );
     const client = new DeepSeekClient(fetchMock as unknown as typeof fetch);
-    const result = await client.complete(options());
+    const result = await client.complete(
+      options({
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '分析截图' },
+              {
+                type: 'image_url',
+                image_url: { url: 'data:image/png;base64,iVBORw0KGgo=', detail: 'low' },
+              },
+            ],
+          },
+        ],
+      }),
+    );
     expect(result.content).toContain('"reply":"ok"');
     expect(result.usage?.promptTokens).toBe(10);
+    expect(result.usage?.promptCacheHitTokens).toBe(8);
+    expect(result.usage?.promptCacheMissTokens).toBe(2);
     const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
     const body = JSON.parse(String(init?.body));
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.stream).toBe(false);
+    expect(body.messages[0].content[1].type).toBe('image_url');
     const headers = init?.headers as Record<string, string>;
     expect(headers.Authorization).toContain('test-key-12345678');
   });

@@ -1,7 +1,10 @@
 import type {
   ChatMessage,
+  CacheStats,
   ContentError,
   ExecuteReport,
+  FontSize,
+  ImageAttachment,
   PagePreview,
   PageSnapshot,
   PanelError,
@@ -11,6 +14,7 @@ import type {
   StoredSettings,
   TabInfo,
   TaskStatus,
+  ThemeMode,
   UndoReport,
 } from '../types/messages';
 import type {
@@ -24,7 +28,7 @@ import {
   hostPermissionPattern,
   normalizeBaseUrl,
 } from '../lib/deepseek/client';
-import type { ChatCompleter } from '../lib/deepseek/types';
+import type { ChatCompleter, CompletionResult } from '../lib/deepseek/types';
 import { buildPlan, PlanBuildError } from '../lib/planner/build-plan';
 import { ModelOutputError, parseModelOutput } from '../lib/planner/parse';
 import { buildChatMessages } from '../lib/planner/prompt';
@@ -120,6 +124,26 @@ const UNSUPPORTED_PREFIXES = [
 
 const WEB_STORE_URLS = ['https://chromewebstore.google.com', 'https://chrome.google.com/webstore'];
 
+const FONT_SIZES = new Set<FontSize>(['small', 'medium', 'large']);
+const THEMES = new Set<ThemeMode>(['light', 'dark', 'system']);
+const MAX_IMAGE_DATA_URL_LENGTH = 8 * 1024 * 1024;
+
+function isImageAttachment(value: unknown): value is ImageAttachment {
+  if (!value || typeof value !== 'object') return false;
+  const attachment = value as Partial<ImageAttachment>;
+  return (
+    typeof attachment.dataUrl === 'string' &&
+    /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(attachment.dataUrl) &&
+    attachment.dataUrl.length <= MAX_IMAGE_DATA_URL_LENGTH &&
+    Number.isInteger(attachment.width) &&
+    Number.isInteger(attachment.height) &&
+    (attachment.width ?? 0) > 0 &&
+    (attachment.height ?? 0) > 0 &&
+    (attachment.width ?? 0) <= 8192 &&
+    (attachment.height ?? 0) <= 8192
+  );
+}
+
 export function unsupportedPageReason(url: string | undefined | null): string | null {
   if (!url) return '无法读取当前标签页地址，请先切换到普通网页。';
   const lower = url.toLowerCase();
@@ -170,6 +194,9 @@ export class AgentController {
   private abortController: AbortController | null = null;
   private cancelRequested = false;
   private lastRequestAt = 0;
+  private cacheHitTokens = 0;
+  private cacheMissTokens = 0;
+  private cacheRequests = 0;
 
   constructor(deps: ControllerDeps) {
     this.deps = deps;
@@ -187,14 +214,24 @@ export class AgentController {
     this.pagePreview = null;
   }
 
-  private appendMessage(role: ChatMessage['role'], content: string, kind: ChatMessage['kind']): void {
+  private appendMessage(
+    role: ChatMessage['role'],
+    content: string,
+    kind: ChatMessage['kind'],
+    attachment?: ImageAttachment,
+  ): void {
     const safeContent = redactSecrets(content).slice(0, 4000);
+    if (attachment) {
+      const withImages = this.session.messages.filter((message) => message.attachment);
+      if (withImages.length >= 3) delete withImages[0]!.attachment;
+    }
     this.session.messages.push({
       id: `msg_${globalThis.crypto.randomUUID().slice(0, 12)}`,
       role,
       content: safeContent,
       at: this.now(),
       kind,
+      ...(attachment ? { attachment } : {}),
     });
     if (this.session.messages.length > 80) {
       this.session.messages = this.session.messages.slice(-80);
@@ -209,7 +246,15 @@ export class AgentController {
 
   private async flush(): Promise<void> {
     try {
-      await this.deps.session.save(this.session);
+      const persisted = {
+        ...this.session,
+        messages: this.session.messages.map((message) => {
+          const copy = { ...message };
+          delete copy.attachment;
+          return copy;
+        }),
+      };
+      await this.deps.session.save(persisted);
     } catch {
       // A failed session write must not turn a completed page action into a second mutation.
     }
@@ -228,6 +273,13 @@ export class AgentController {
     } catch {
       activeTab = null;
     }
+    const cacheTotal = this.cacheHitTokens + this.cacheMissTokens;
+    const cache: CacheStats = {
+      hitTokens: this.cacheHitTokens,
+      missTokens: this.cacheMissTokens,
+      hitRate: cacheTotal > 0 ? this.cacheHitTokens / cacheTotal : null,
+      requests: this.cacheRequests,
+    };
     return {
       status: this.status,
       statusText: STATUS_TEXT[this.status],
@@ -240,7 +292,20 @@ export class AgentController {
       undoCount: this.session.undo?.records.length ?? 0,
       lastError: this.lastError,
       busy: this.busy,
+      cache,
     };
+  }
+
+  private recordUsage(usage: CompletionResult['usage']): void {
+    if (
+      !usage ||
+      (usage.promptCacheHitTokens === undefined && usage.promptCacheMissTokens === undefined)
+    ) {
+      return;
+    }
+    this.cacheHitTokens += usage.promptCacheHitTokens ?? 0;
+    this.cacheMissTokens += usage.promptCacheMissTokens ?? 0;
+    this.cacheRequests += 1;
   }
 
   async broadcastState(): Promise<void> {
@@ -310,8 +375,13 @@ export class AgentController {
         return this.testConnection();
       case 'ANALYZE_PAGE':
         return this.analyzePage();
+      case 'CAPTURE_TAB':
+        return {
+          ok: false,
+          error: { code: 'internal_error', message: '截图请求应由后台直接处理' },
+        };
       case 'CHAT':
-        return this.chat(request.text);
+        return this.chat(request.text, request.attachment);
       case 'APPROVE_PLAN':
         return this.approvePlan(request.planHash);
       case 'REJECT_PLAN':
@@ -322,6 +392,9 @@ export class AgentController {
         return this.undo();
       case 'CLEAR_CHAT':
         this.session.messages = [];
+        this.cacheHitTokens = 0;
+        this.cacheMissTokens = 0;
+        this.cacheRequests = 0;
         await this.flush();
         return { ok: true, data: await this.getState() };
       case 'DISMISS_ERROR':
@@ -353,6 +426,18 @@ export class AgentController {
     }
     if (!Number.isInteger(request.timeoutMs) || request.timeoutMs < 5_000 || request.timeoutMs > 120_000) {
       const panelError = this.setError('invalid_timeout', '超时时间必须在 5 秒到 120 秒之间');
+      await this.flush();
+      return { ok: false, error: panelError };
+    }
+    const fontSize = request.fontSize ?? this.settings.fontSize;
+    const theme = request.theme ?? this.settings.theme;
+    if (!FONT_SIZES.has(fontSize)) {
+      const panelError = this.setError('invalid_font_size', '字体大小选项无效');
+      await this.flush();
+      return { ok: false, error: panelError };
+    }
+    if (!THEMES.has(theme)) {
+      const panelError = this.setError('invalid_theme', '主题选项无效');
       await this.flush();
       return { ok: false, error: panelError };
     }
@@ -396,6 +481,8 @@ export class AgentController {
       baseUrl,
       model: request.model.trim(),
       timeoutMs: request.timeoutMs,
+      fontSize,
+      theme,
     };
     await this.deps.settings.save(next);
     this.settings = next;
@@ -422,7 +509,7 @@ export class AgentController {
     this.abortController = controller;
     try {
       await this.waitForRequestSlot(controller.signal);
-      await this.deps.deepseek.complete({
+      const result = await this.deps.deepseek.complete({
         apiKey: this.settings.apiKey,
         baseUrl: this.settings.baseUrl,
         model: this.settings.model,
@@ -436,6 +523,7 @@ export class AgentController {
         maxTokens: 8,
         temperature: 0,
       });
+      this.recordUsage(result.usage);
       this.lastError = null;
       return {
         ok: true,
@@ -521,7 +609,7 @@ export class AgentController {
       this.status = 'failed';
       const message =
         error instanceof Error && /Cannot access|cannot be injected|permission/i.test(error.message)
-          ? 'Chrome 未授予当前页面的访问权限。请重新点击扩展图标后再试。'
+          ? 'Chrome 未授予当前页面的访问权限。请在侧边栏允许当前网站权限后重试。'
           : error instanceof Error
             ? error.message
             : '读取页面失败';
@@ -534,8 +622,9 @@ export class AgentController {
     }
   }
 
-  private async chat(text: string): Promise<ControllerResult<PanelState>> {
-    const trimmed = text.trim();
+  private async chat(text: string, attachment?: ImageAttachment): Promise<ControllerResult<PanelState>> {
+    let trimmed = text.trim();
+    if (!trimmed && attachment) trimmed = '请分析这张截图。';
     if (!trimmed) {
       const panelError = this.setError('invalid_input', '请输入指令');
       return { ok: false, error: panelError };
@@ -554,8 +643,12 @@ export class AgentController {
       await this.flush();
       return { ok: false, error: panelError };
     }
+    if (attachment && !isImageAttachment(attachment)) {
+      const panelError = this.setError('invalid_attachment', '截图附件格式、尺寸或大小无效');
+      return { ok: false, error: panelError };
+    }
 
-    this.appendMessage('user', trimmed, 'normal');
+    this.appendMessage('user', trimmed, 'normal', attachment);
     const history = this.session.messages
       .slice(0, -1)
       .filter((message) => message.kind === 'normal' && message.role !== 'system')
@@ -578,13 +671,19 @@ export class AgentController {
         apiKey: this.settings.apiKey,
         baseUrl: this.settings.baseUrl,
         model: this.settings.model,
-        messages: buildChatMessages(history, trimmed, this.pageContext?.snapshot ?? null),
+        messages: buildChatMessages(
+          history,
+          trimmed,
+          this.pageContext?.snapshot ?? null,
+          attachment,
+        ),
         timeoutMs: this.settings.timeoutMs,
         signal: controller.signal,
         jsonMode: true,
         maxTokens: 1600,
         temperature: 0.2,
       });
+      this.recordUsage(result.usage);
       const parsed = parseModelOutput(result.content);
       this.appendMessage('assistant', parsed.reply, 'normal');
 

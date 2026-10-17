@@ -1,6 +1,6 @@
 {
   "name": "deepseek-browser-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A Chrome side-panel browser agent powered by the DeepSeek API, with human-approved, allow-listed page actions.",
   "license": "GPL-3.0-only",

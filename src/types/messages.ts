@@ -19,11 +19,16 @@ export type TaskStatus =
   | 'stale_page'
   | 'permission_required';
 
+export type FontSize = 'small' | 'medium' | 'large';
+export type ThemeMode = 'light' | 'dark' | 'system';
+
 export interface StoredSettings {
   apiKey: string;
   baseUrl: string;
   model: string;
   timeoutMs: number;
+  fontSize: FontSize;
+  theme: ThemeMode;
 }
 
 export interface PublicSettings {
@@ -31,6 +36,8 @@ export interface PublicSettings {
   model: string;
   timeoutMs: number;
   hasApiKey: boolean;
+  fontSize: FontSize;
+  theme: ThemeMode;
 }
 
 export interface TabInfo {
@@ -42,12 +49,19 @@ export interface TabInfo {
 export type ChatRole = 'user' | 'assistant' | 'system';
 export type ChatKind = 'normal' | 'error' | 'success' | 'info';
 
+export interface ImageAttachment {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
   at: number;
   kind: ChatKind;
+  attachment?: ImageAttachment;
 }
 
 export type ElementKind = 'text' | 'text_input' | 'checkbox' | 'select' | 'button';
@@ -139,6 +153,14 @@ export interface PanelState {
   undoCount: number;
   lastError: PanelError | null;
   busy: boolean;
+  cache: CacheStats;
+}
+
+export interface CacheStats {
+  hitTokens: number;
+  missTokens: number;
+  hitRate: number | null;
+  requests: number;
 }
 
 export interface ContentError {
@@ -195,10 +217,13 @@ export type PanelRequest =
       timeoutMs: number;
       apiKeyAction: 'keep' | 'replace' | 'delete';
       apiKey?: string;
+      fontSize?: FontSize;
+      theme?: ThemeMode;
     }
   | { type: 'TEST_CONNECTION' }
   | { type: 'ANALYZE_PAGE' }
-  | { type: 'CHAT'; text: string }
+  | { type: 'CHAT'; text: string; attachment?: ImageAttachment }
+  | { type: 'CAPTURE_TAB' }
   | { type: 'APPROVE_PLAN'; planHash: string }
   | { type: 'REJECT_PLAN'; planHash: string }
   | { type: 'CANCEL_REQUEST' }

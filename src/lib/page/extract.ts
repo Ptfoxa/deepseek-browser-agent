@@ -334,16 +334,6 @@ export function readPage(doc: Document, url: string): ReadPageResult {
     });
   }
 
-  for (const field of doc.querySelectorAll('input,textarea,select')) {
-    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
-      if (isSensitiveField(field) && field.type !== 'checkbox') {
-        if (!elements.some((entry) => registry.get(entry.id)?.element === field)) {
-          sensitiveFieldCount += 1;
-        }
-      }
-    }
-  }
-
   const headings = [...doc.querySelectorAll('h1,h2,h3')]
     .map((heading) => truncate(redactPii(elementText(heading)), 160))
     .filter(Boolean)

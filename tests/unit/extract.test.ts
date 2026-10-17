@@ -32,7 +32,7 @@ describe('page extraction', () => {
     expect(serialized).not.toContain('user@example.com');
     expect(serialized).not.toContain('13812345678');
     expect(serialized).not.toContain('should-not-appear');
-    expect(snapshot.sensitiveFieldCount).toBeGreaterThanOrEqual(2);
+    expect(snapshot.sensitiveFieldCount).toBe(2);
     expect(snapshot.forms).toHaveLength(1);
     expect(snapshot.forms[0]?.fieldCount).toBeGreaterThanOrEqual(4);
     expect(snapshot.elements.find((element) => element.label === 'Username')?.formIndex).toBe(0);

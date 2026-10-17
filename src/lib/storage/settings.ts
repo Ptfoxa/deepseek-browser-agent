@@ -8,6 +8,8 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   baseUrl: 'https://api.deepseek.com',
   model: 'deepseek-flash',
   timeoutMs: 60_000,
+  fontSize: 'medium',
+  theme: 'light',
 };
 
 export const SettingsSchema = z
@@ -16,6 +18,8 @@ export const SettingsSchema = z
     baseUrl: z.string().max(2048),
     model: z.string().max(80),
     timeoutMs: z.number().int().min(5_000).max(120_000),
+    fontSize: z.enum(['small', 'medium', 'large']).default('medium'),
+    theme: z.enum(['light', 'dark', 'system']).default('light'),
   })
   .strict();
 
@@ -53,5 +57,7 @@ export function toPublicSettings(settings: StoredSettings): PublicSettings {
     model: settings.model,
     timeoutMs: settings.timeoutMs,
     hasApiKey: settings.apiKey.length > 0,
+    fontSize: settings.fontSize,
+    theme: settings.theme,
   };
 }

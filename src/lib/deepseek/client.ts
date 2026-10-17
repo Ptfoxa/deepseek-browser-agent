@@ -175,7 +175,12 @@ export class DeepSeekClient implements ChatCompleter {
 
         const data = (await response.json()) as {
           choices?: Array<{ message?: { content?: string | null } }>;
-          usage?: { prompt_tokens?: number; completion_tokens?: number };
+          usage?: {
+            prompt_tokens?: number;
+            completion_tokens?: number;
+            prompt_cache_hit_tokens?: number;
+            prompt_cache_miss_tokens?: number;
+          };
         };
         const content = data.choices?.[0]?.message?.content;
         if (typeof content !== 'string' || content.trim().length === 0) {
@@ -187,6 +192,8 @@ export class DeepSeekClient implements ChatCompleter {
             ? {
                 promptTokens: data.usage.prompt_tokens,
                 completionTokens: data.usage.completion_tokens,
+                promptCacheHitTokens: data.usage.prompt_cache_hit_tokens,
+                promptCacheMissTokens: data.usage.prompt_cache_miss_tokens,
               }
             : undefined,
         };

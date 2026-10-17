@@ -16,6 +16,9 @@ DeepSeek Browser Agent 是一个由 DeepSeek API 驱动的 Chrome 侧边栏网�
 - DeepSeek API 配置、连接测试、超时、取消、1.2 秒请求间隔和 429/5xx 指数退避重试。
 - 严格 Zod Schema 校验的结构化操作协议。
 - 支持 `replace_text`、`fill_input`、`set_checkbox`、`select_option`、`click_element`。
+- 支持小/标准/大三档字体大小，以及日间、夜间、跟随系统三种主题。
+- 可截图当前标签页并框选区域，将 PNG 截图直接附加到下一条聊天消息；`deepseek-flash` 支持视觉输入。
+- 底部显示 DeepSeek Prompt Cache 的会话缓存命中率和命中/未命中 tokens。
 - 每次修改展示目标、修改前后内容、风险提示，并要求用户逐次批准。
 - 单次授权绑定当前计划哈希、标签页、页面指纹和过期时间；页面跳转、重新加载或元素内容变化后旧授权失效。
 - 执行后逐项校验；失败时停止后续动作。
@@ -59,7 +62,7 @@ pnpm build
 4. 选择本项目的 `dist` 目录。
 5. 固定扩展图标；点击图标会打开侧边栏。
 
-Chrome 137+ 已移除用于自动加载扩展的 `--load-extension` 命令行参数，因此自动化浏览器测试使用 Playwright Chromium；这不影响在 `chrome://extensions/` 中手动加载。
+Chrome 137+ 已移除用于自动加载扩展的 `--load-extension` 命令行参数，因此自动化浏览器测试使用 Playwright 驱动本机 Chrome，并通过 CDP `Extensions.loadUnpacked` 加载扩展；这不影响在 `chrome://extensions/` 中手动加载。
 
 ## DeepSeek API 配置
 
@@ -70,6 +73,7 @@ Chrome 137+ 已移除用于自动加载扩展的 `--load-extension` 命令行参
 - 默认模型：`deepseek-flash`
 - JSON Output：`response_format: { "type": "json_object" }`
 - 官方文档要求 JSON 模式提示词中出现 `json` 字样，并建议设置足够的 `max_tokens`
+- 图像输入：Chat Completions 的 `content` 使用块数组，图片通过 `image_url` base64 data URL 传入；当前 `deepseek-flash` 支持该格式
 
 在扩展侧边栏的“设置”中填写 API Key。默认地址与模型已预填，可直接使用；也可以修改 Base URL 和模型名称。保存自定义 Base URL 时，扩展会请求该具体 origin 的可选站点权限，不授予权限则不会保存。
 
@@ -116,15 +120,15 @@ pnpm test:e2e
 
 | 权限 | 用途 | 边界 |
 | --- | --- | --- |
-| `activeTab` | 用户点击“分析当前网页”后读取当前标签页 | 不会后台扫描其他标签页 |
+| `activeTab` | 用户点击“分析当前网页”后读取当前标签页；截图也需要该临时权限 | 不会后台扫描其他标签页 |
 | `scripting` | 按需注入 `content.js` | 仅注入当前标签页；不加载远程脚本 |
 | `storage` | 保存设置与短期会话 | API Key 位于 `chrome.storage.local`，非专业密钥保险箱 |
 | `sidePanel` | 打开 Chrome 侧边栏 | 无额外数据访问 |
 | `tabs` | 识别目标标签页标题/地址，并在跳转或重载时使旧授权失效 | 仅用于标签页协调，不读取页面正文 |
 | `host_permissions` | 访问 `https://api.deepseek.com/*` | 仅默认 DeepSeek API 域名 |
-| `optional_host_permissions` | 允许用户配置自定义 API 地址 | 保存时只请求用户输入的具体 origin |
+| `optional_host_permissions` | 按需请求当前网站访问权，以及自定义 API 地址权限 | 首次分析时只请求当前网站；保存自定义 API 时只请求具体 API origin |
 
-扩展不申请 `<all_urls>` 的永久站点访问权，不读取 `chrome://`、Chrome 应用商店或其他受限页面。
+扩展不申请 `<all_urls>` 的永久站点访问权，不读取 `chrome://`、Chrome 应用商店或其他受限页面。首次分析某个网站时 Chrome 会弹出该网站的具体权限请求；允许后可在扩展详情中按网站撤销。因此扩展管理页不会默认出现“读取和更改所有网站数据”的全局开关。
 
 ## 数据隐私
 
@@ -135,6 +139,7 @@ pnpm test:e2e
 - 标题层级、去除查询参数和锚点后的链接路径。
 - 可交互元素摘要：临时 ID、元素类型、标签、非敏感输入当前值、复选框状态、下拉选项。
 - 你对 AI 的指令和最近对话。
+- 你主动框选并发送的当前标签页截图（PNG base64）。
 
 不会读取或发送：
 
@@ -144,6 +149,8 @@ pnpm test:e2e
 - API Key 到 Content Script 或网页。
 
 默认不保存完整网页正文，也不把页面内容写入调试日志。链接查询参数会被移除；正文中的邮箱、手机号、疑似卡号和证件号会使用启发式规则脱敏。启发式脱敏不能保证覆盖所有格式，涉及敏感数据时请谨慎使用。
+
+截图由用户手动框选后才随当前消息发送；界面会提示避免框选密码、支付等敏感信息。截图不会写入 `chrome.storage.session`，刷新或 Service Worker 回收后历史图片附件会消失。
 
 ## 安全设计
 
@@ -180,6 +187,8 @@ pnpm test:e2e
 - Service Worker 被回收后页面上下文丢失，需要重新点击“分析当前网页”。
 - 撤销仅覆盖最近一批成功执行的修改，不提供历史撤销栈。
 - 文本提取和 PII 脱敏均为启发式，不能替代站点级数据分类。
+- 截图使用 `chrome.tabs.captureVisibleTab`，需要 activeTab 临时权限；若侧边栏不是通过扩展图标打开，截图可能要求重新点击图标授权。`chrome://` 等内部页面不可截图。
+- 缓存命中率来自 DeepSeek `usage.prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`，仅代表当前扩展会话累计值；Service Worker 回收后统计会重置。
 - API Key 保存在扩展本地存储，不是操作系统密钥库；建议使用专用、可撤销的 Key。
 - 自动化端到端测试使用 Playwright Chromium；Chrome 155 不再支持通过命令行加载扩展。
 - 真实 DeepSeek 连通性需要用户提供自己的 API Key 才能最终验证。

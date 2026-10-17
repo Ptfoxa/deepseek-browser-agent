@@ -154,6 +154,7 @@ function isPanelRequest(value: unknown): value is PanelRequest {
       'SAVE_SETTINGS',
       'TEST_CONNECTION',
       'ANALYZE_PAGE',
+      'CAPTURE_TAB',
       'CHAT',
       'APPROVE_PLAN',
       'REJECT_PLAN',
@@ -168,7 +169,34 @@ function isPanelRequest(value: unknown): value is PanelRequest {
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (!isTrustedPanelSender(sender) || !isPanelRequest(message)) return false;
   ready
-    .then(() => controller.handle(message))
+    .then(async () => {
+      if (message.type === 'CAPTURE_TAB') {
+        try {
+          const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+          const tab = tabs[0];
+          if (!tab || typeof tab.id !== 'number' || typeof tab.windowId !== 'number') {
+            return {
+              ok: false,
+              error: { code: 'no_active_tab', message: '没有找到可截图的当前标签页' },
+            };
+          }
+          const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+          return { ok: true, data: { dataUrl } };
+        } catch (error) {
+          const raw = error instanceof Error ? error.message : '';
+          return {
+            ok: false,
+            error: {
+              code: 'capture_failed',
+              message: /activeTab|all_urls|capture/i.test(raw)
+                ? '当前标签页没有临时截图权限。请点击扩展图标重新打开侧边栏后再截图。'
+                : `截图失败：${raw || '请确认当前页面允许扩展访问'}`,
+            },
+          };
+        }
+      }
+      return controller.handle(message);
+    })
     .then((result) => sendResponse(result))
     .catch((error: unknown) => {
       sendResponse({

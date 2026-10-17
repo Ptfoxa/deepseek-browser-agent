@@ -1,9 +1,19 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type {
   ApiResult,
+  CacheStats,
+  FontSize,
+  ImageAttachment,
   PanelRequest,
   PanelState,
   StateUpdateMessage,
+  ThemeMode,
 } from '../types/messages';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -61,11 +71,40 @@ function formatCount(value: number): string {
   return new Intl.NumberFormat('zh-CN').format(value);
 }
 
+function sitePatternForUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return `${url.protocol}//${url.hostname}/*`;
+  } catch {
+    return null;
+  }
+}
+
+async function requestSiteAccess(raw: string | null | undefined): Promise<boolean> {
+  const pattern = sitePatternForUrl(raw);
+  if (!pattern) return true;
+  try {
+    // Keep the permissions.request call in the click handler to preserve user activation.
+    return await chrome.permissions.request({ origins: [pattern] });
+  } catch {
+    try {
+      return await chrome.permissions.contains({ origins: [pattern] });
+    } catch {
+      return false;
+    }
+  }
+}
+
 export function App() {
   const [state, setState] = useState<PanelState | null>(null);
   const [view, setView] = useState<'chat' | 'settings'>('chat');
   const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   const [draft, setDraft] = useState('');
+  const [attachment, setAttachment] = useState<ImageAttachment | null>(null);
+  const [capture, setCapture] = useState<{ dataUrl: string } | null>(null);
+  const [capturing, setCapturing] = useState(false);
   const messageEnd = useRef<HTMLDivElement | null>(null);
 
   const refresh = async () => {
@@ -96,6 +135,23 @@ export function App() {
     return () => clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const theme = state?.settings.theme ?? 'light';
+      const isDark = theme === 'dark' || (theme === 'system' && media.matches);
+      root.dataset.theme = isDark ? 'dark' : 'light';
+      root.dataset.fontSize = state?.settings.fontSize ?? 'medium';
+    };
+    apply();
+    if (state?.settings.theme === 'system') {
+      media.addEventListener('change', apply);
+      return () => media.removeEventListener('change', apply);
+    }
+    return undefined;
+  }, [state?.settings.theme, state?.settings.fontSize]);
+
   const statusTone = state ? STATUS_TONE[state.status] ?? 'neutral' : 'neutral';
   const busy = state?.busy ?? false;
 
@@ -114,14 +170,41 @@ export function App() {
 
   const submitChat = async (event: FormEvent) => {
     event.preventDefault();
-    const text = draft.trim();
-    if (!text || busy) return;
+    const text = draft.trim() || (attachment ? '请分析这张截图。' : '');
+    if ((!text && !attachment) || busy) return;
+    const outgoingAttachment = attachment;
     setDraft('');
-    await run({ type: 'CHAT', text });
+    setAttachment(null);
+    await run({ type: 'CHAT', text, attachment: outgoingAttachment ?? undefined });
   };
 
   const analyze = async () => {
+    const allowed = await requestSiteAccess(state?.activeTab?.url);
+    if (!allowed) {
+      setNotice({
+        tone: 'bad',
+        text: '未授予当前网站的访问权限。请允许该站点权限后再分析网页。',
+      });
+      return;
+    }
     await run({ type: 'ANALYZE_PAGE' });
+  };
+
+  const startCapture = async () => {
+    if (busy || capturing) return;
+    const allowed = await requestSiteAccess(state?.activeTab?.url);
+    if (!allowed) {
+      setNotice({ tone: 'bad', text: '未授予当前网站的截图权限' });
+      return;
+    }
+    setCapturing(true);
+    const result = await send<{ dataUrl: string }>({ type: 'CAPTURE_TAB' });
+    setCapturing(false);
+    if (!result.ok) {
+      setNotice({ tone: 'bad', text: result.error.message });
+      return;
+    }
+    setCapture({ dataUrl: result.data.dataUrl });
   };
 
   if (!state) {
@@ -218,6 +301,13 @@ export function App() {
                       </span>
                       <time>{timeLabel(message.at)}</time>
                     </div>
+                    {message.attachment && (
+                      <img
+                        className="message-image"
+                        src={message.attachment.dataUrl}
+                        alt="用户截图"
+                      />
+                    )}
                     <div className="message-body">{message.content}</div>
                   </article>
                 ))}
@@ -227,6 +317,25 @@ export function App() {
           </main>
 
           <form className="composer" onSubmit={submitChat}>
+            {attachment && (
+              <div className="attachment-preview">
+                <img src={attachment.dataUrl} alt="待发送截图" />
+                <div>
+                  <strong>当前标签页截图</strong>
+                  <span>
+                    {attachment.width} × {attachment.height}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="attachment-remove"
+                  onClick={() => setAttachment(null)}
+                  aria-label="移除截图"
+                >
+                  ×
+                </button>
+              </div>
+            )}
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
@@ -242,7 +351,23 @@ export function App() {
               disabled={busy}
             />
             <div className="composer-actions">
-              <span className="dom-note">修改仅作用于页面 DOM，不会自动提交</span>
+              <div className="composer-left">
+                <button
+                  type="button"
+                  className="tool-button"
+                  onClick={() => void startCapture()}
+                  disabled={busy || capturing}
+                  title="框选当前标签页截图"
+                  aria-label="截图当前标签页"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9 4.5 10.3 3h3.4L15 4.5h3.5A1.5 1.5 0 0 1 20 6v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18V6a1.5 1.5 0 0 1 1.5-1.5H9Zm3 4.2a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6Zm0 2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6Z" />
+                  </svg>
+                </button>
+                <span className="dom-note">
+                  {capturing ? '正在截取…' : '修改仅作用于页面 DOM，不会自动提交'}
+                </span>
+              </div>
               {busy ? (
                 <button
                   type="button"
@@ -252,13 +377,25 @@ export function App() {
                   取消请求
                 </button>
               ) : (
-                <button type="submit" className="send-button" disabled={!draft.trim()}>
+                <button type="submit" className="send-button" disabled={!draft.trim() && !attachment}>
                   发送
                 </button>
               )}
             </div>
           </form>
         </>
+      )}
+      <CacheBar cache={state.cache} />
+      {capture && (
+        <CaptureModal
+          dataUrl={capture.dataUrl}
+          onCancel={() => setCapture(null)}
+          onUse={(image) => {
+            setAttachment(image);
+            setCapture(null);
+            setNotice({ tone: 'ok', text: '截图已加入待发送附件' });
+          }}
+        />
       )}
     </div>
   );
@@ -416,6 +553,178 @@ function EmptyState({ onAnalyze, hasKey }: { onAnalyze: () => Promise<void>; has
   );
 }
 
+function CacheBar({ cache }: { cache: CacheStats }) {
+  const percent = cache.hitRate === null ? null : Math.round(cache.hitRate * 100);
+  return (
+    <footer
+      className="cache-bar"
+      title="DeepSeek 返回的 prompt cache 命中率；服务未返回缓存字段时显示 —"
+    >
+      <span className={`cache-indicator ${percent === null ? '' : 'active'}`} />
+      <span>缓存命中率</span>
+      <strong>{percent === null ? '—' : `${percent}%`}</strong>
+      <span className="cache-detail">
+        {cache.requests === 0
+          ? '等待首次请求'
+          : `命中 ${formatCount(cache.hitTokens)} · 未命中 ${formatCount(cache.missTokens)} tokens`}
+      </span>
+    </footer>
+  );
+}
+
+function CaptureModal({
+  dataUrl,
+  onCancel,
+  onUse,
+}: {
+  dataUrl: string;
+  onCancel: () => void;
+  onUse: (image: ImageAttachment) => void;
+}) {
+  const [selection, setSelection] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+  const [cropping, setCropping] = useState(false);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const image = new Image();
+    image.onload = () =>
+      setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
+    image.src = dataUrl;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [dataUrl, onCancel]);
+
+  const point = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+    };
+  };
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const start = point(event);
+    startRef.current = start;
+    setSelection({ x: start.x, y: start.y, w: 0, h: 0 });
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = startRef.current;
+    if (!start) return;
+    const current = point(event);
+    setSelection({
+      x: Math.min(start.x, current.x),
+      y: Math.min(start.y, current.y),
+      w: Math.abs(current.x - start.x),
+      h: Math.abs(current.y - start.y),
+    });
+  };
+
+  const onPointerUp = () => {
+    startRef.current = null;
+  };
+
+  const crop = () => {
+    if (!selection || !imageSize) return;
+    const sourceWidth = Math.round(selection.w * imageSize.width);
+    const sourceHeight = Math.round(selection.h * imageSize.height);
+    if (sourceWidth < 16 || sourceHeight < 16) return;
+    setCropping(true);
+    const image = new Image();
+    image.onload = () => {
+      const maxEdge = 1600;
+      const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        setCropping(false);
+        return;
+      }
+      context.drawImage(
+        image,
+        Math.round(selection.x * imageSize.width),
+        Math.round(selection.y * imageSize.height),
+        sourceWidth,
+        sourceHeight,
+        0,
+        0,
+        width,
+        height,
+      );
+      onUse({ dataUrl: canvas.toDataURL('image/png'), width, height });
+      setCropping(false);
+    };
+    image.src = dataUrl;
+  };
+
+  return (
+    <div className="capture-backdrop" role="dialog" aria-modal="true" aria-label="框选截图">
+      <div className="capture-modal">
+        <div className="capture-head">
+          <div>
+            <h2>框选截图</h2>
+            <p>在画面上拖动鼠标选择区域。截图会发送给 DeepSeek，请避免框选密码、支付等敏感信息。</p>
+          </div>
+          <button className="icon-button" onClick={onCancel} aria-label="关闭截图">
+            ×
+          </button>
+        </div>
+        <div
+          className="capture-stage"
+          ref={stageRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <img src={dataUrl} alt="当前标签页截图" draggable={false} />
+          {selection && (
+            <div
+              className="capture-selection"
+              style={{
+                left: `${selection.x * 100}%`,
+                top: `${selection.y * 100}%`,
+                width: `${selection.w * 100}%`,
+                height: `${selection.h * 100}%`,
+              }}
+            />
+          )}
+        </div>
+        <div className="capture-actions">
+          <button className="secondary" onClick={onCancel}>
+            取消
+          </button>
+          <button
+            className="secondary"
+            onClick={() => setSelection({ x: 0, y: 0, w: 1, h: 1 })}
+          >
+            选择整个画面
+          </button>
+          <button
+            className="primary"
+            disabled={!selection || !imageSize || selection.w * selection.h < 0.002 || cropping}
+            onClick={crop}
+          >
+            {cropping ? '处理中…' : '使用选中截图'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsView({
   state,
   onState,
@@ -431,6 +740,8 @@ function SettingsView({
   const [baseUrl, setBaseUrl] = useState(state.settings.baseUrl);
   const [model, setModel] = useState(state.settings.model);
   const [timeoutSeconds, setTimeoutSeconds] = useState(String(Math.round(state.settings.timeoutMs / 1000)));
+  const [fontSize, setFontSize] = useState<FontSize>(state.settings.fontSize);
+  const [theme, setTheme] = useState<ThemeMode>(state.settings.theme);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -438,7 +749,15 @@ function SettingsView({
     setBaseUrl(state.settings.baseUrl);
     setModel(state.settings.model);
     setTimeoutSeconds(String(Math.round(state.settings.timeoutMs / 1000)));
-  }, [state.settings.baseUrl, state.settings.model, state.settings.timeoutMs]);
+    setFontSize(state.settings.fontSize);
+    setTheme(state.settings.theme);
+  }, [
+    state.settings.baseUrl,
+    state.settings.model,
+    state.settings.timeoutMs,
+    state.settings.fontSize,
+    state.settings.theme,
+  ]);
 
   const requestOriginPermission = async (): Promise<boolean> => {
     let parsed: URL;
@@ -480,6 +799,8 @@ function SettingsView({
         timeoutMs: Math.round(Number(timeoutSeconds) * 1000),
         apiKeyAction: apiKey.trim() ? 'replace' : 'keep',
         apiKey: apiKey.trim() || undefined,
+        fontSize,
+        theme,
       });
       if (!result.ok) {
         onNotice({ tone: 'bad', text: result.error.message });
@@ -500,6 +821,8 @@ function SettingsView({
       model,
       timeoutMs: Math.round(Number(timeoutSeconds) * 1000),
       apiKeyAction: 'delete',
+      fontSize,
+      theme,
     });
     if (!result.ok) {
       onNotice({ tone: 'bad', text: result.error.message });
@@ -568,6 +891,50 @@ function SettingsView({
         <small>官方当前默认：deepseek-flash</small>
       </label>
 
+      <div className="field">
+        <span>字体大小</span>
+        <div className="segmented">
+          {(
+            [
+              ['small', '小'],
+              ['medium', '标准'],
+              ['large', '大'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={fontSize === value ? 'active' : ''}
+              onClick={() => setFontSize(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="field">
+        <span>主题</span>
+        <div className="segmented">
+          {(
+            [
+              ['light', '日间'],
+              ['dark', '夜间'],
+              ['system', '跟随系统'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={theme === value ? 'active' : ''}
+              onClick={() => setTheme(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <label className="field">
         <span>请求超时（秒）</span>
         <input
@@ -608,6 +975,12 @@ function SettingsView({
         <p>
           不保存完整网页正文。聊天记录和待确认计划（仅操作预览）保存在
           chrome.storage.session，关闭浏览器后清除。若 Service Worker 被回收，页面上下文会丢失，需要重新分析。
+          截图会随当前消息发送给 DeepSeek，但不会写入会话存储。
+        </p>
+        <h3>网页访问权限</h3>
+        <p>
+          activeTab 不会在扩展管理页显示“读取所有网站数据”的全局开关。首次分析或截图某个网站时，
+          Chrome 会请求该网站的具体访问权限；允许后可在扩展详情中按网站撤销。扩展不会默认申请所有网站权限。
         </p>
         <h3>权限说明</h3>
         <ul>

@@ -120,9 +120,10 @@ function makeHarness(overrides: { permission?: boolean; apiKey?: string } = {}):
   const deepseek = {
     complete: vi.fn(async () => ({
       content: modelText({
-          summary: '修改标题',
-          actions: [{ type: 'replace_text', target: 'el_001', value: 'New title' }],
-        }),
+        summary: '修改标题',
+        actions: [{ type: 'replace_text', target: 'el_001', value: 'New title' }],
+      }),
+      usage: { promptCacheHitTokens: 80, promptCacheMissTokens: 20 },
     })),
   };
   const content = {
@@ -222,6 +223,8 @@ describe('agent controller integration', () => {
     const chat = expectState(await h.controller.handle({ type: 'CHAT', text: '把标题改成 New title' }));
     expect(chat.status).toBe('awaiting_approval');
     expect(chat.pendingPlan).not.toBeNull();
+    expect(chat.cache.requests).toBe(1);
+    expect(chat.cache.hitRate).toBeCloseTo(0.8);
     expect(h.content.execute).not.toHaveBeenCalled();
     expect(JSON.stringify(chat)).not.toContain('test-key-12345678');
 
@@ -353,5 +356,47 @@ describe('agent controller integration', () => {
     expect(stored).not.toContain('Old title and some page text');
     expect(state.page?.summary).toContain('Old title');
     expect(h.session.value.messages.every((message: ChatMessage) => message.content.length <= 4000)).toBe(true);
+  });
+
+  it('stores font size and theme preferences', async () => {
+    const h = makeHarness();
+    await h.controller.init();
+    const result = await h.controller.handle({
+      type: 'SAVE_SETTINGS',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-flash',
+      timeoutMs: 60_000,
+      apiKeyAction: 'replace',
+      apiKey: 'test-key-12345678',
+      fontSize: 'large',
+      theme: 'dark',
+    });
+    const state = expectState(result);
+    expect(state.settings.fontSize).toBe('large');
+    expect(state.settings.theme).toBe('dark');
+  });
+
+  it('passes screenshot attachments to the vision request without persisting image data', async () => {
+    const h = makeHarness();
+    await h.controller.init();
+    await configure(h);
+    await analyze(h);
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgo=';
+    const result = await h.controller.handle({
+      type: 'CHAT',
+      text: '',
+      attachment: { dataUrl, width: 10, height: 10 },
+    });
+    expect(result.ok).toBe(true);
+    const options = h.deepseek.complete.mock.calls.at(-1)?.[0] as {
+      messages: Array<{ role: string; content: unknown }>;
+    };
+    const last = options.messages.at(-1)!;
+    expect(Array.isArray(last.content)).toBe(true);
+    expect(JSON.stringify(last.content)).toContain('image_url');
+    expect(JSON.stringify(last.content)).toContain(dataUrl);
+    expect(JSON.stringify(h.session.value)).not.toContain(dataUrl);
+    const state = await h.controller.getState();
+    expect(state.messages.some((message) => message.attachment?.dataUrl === dataUrl)).toBe(true);
   });
 });
