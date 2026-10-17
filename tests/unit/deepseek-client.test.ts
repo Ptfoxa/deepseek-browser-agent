@@ -109,4 +109,24 @@ describe('DeepSeek client', () => {
     setTimeout(() => controller.abort(), 10);
     await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
   });
+
+  it('maps network failures and non-retryable 400 responses', async () => {
+    const networkFetch = vi.fn(async () => {
+      throw new TypeError('fetch failed');
+    });
+    const networkClient = new DeepSeekClient(networkFetch as unknown as typeof fetch);
+    await expect(networkClient.complete(options({ timeoutMs: 5000 }))).rejects.toMatchObject({
+      code: 'network',
+    });
+    expect(networkFetch).toHaveBeenCalledTimes(3);
+
+    const badFetch = vi.fn(async () =>
+      jsonResponse({ error: { message: 'invalid request parameters' } }, 400),
+    );
+    const badClient = new DeepSeekClient(badFetch as unknown as typeof fetch);
+    await expect(badClient.complete(options())).rejects.toMatchObject({
+      code: 'bad_request',
+    });
+    expect(badFetch).toHaveBeenCalledTimes(1);
+  });
 });

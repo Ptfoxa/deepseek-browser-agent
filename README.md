@@ -4,6 +4,8 @@ DeepSeek Browser Agent is a Chrome Manifest V3 side-panel assistant that reads t
 
 DeepSeek Browser Agent 是一个由 DeepSeek API 驱动的 Chrome 侧边栏网页助手。它读取你当前指定的网页，生成结构化操作计划，在本地区块链式校验风险后展示修改预览；只有你批准后，扩展才会执行允许列表内的 DOM 操作，并在执行后校验结果。模型输出没有直接执行权限。
 
+仓库：[https://github.com/Ptfoxa/deepseek-browser-agent](https://github.com/Ptfoxa/deepseek-browser-agent)
+
 > 当前版本为 MVP。所有修改只作用于当前页面 DOM，**不会自动保存到网站服务器**，也不会替你提交表单、发送消息、发布内容、删除数据或完成支付。
 
 ## 功能
