@@ -14,6 +14,7 @@ export function canonicalPlan(plan: ActionPlan): string {
       type: action.type,
       target: action.target,
       value: action.value ?? null,
+      expected: action.expected,
       risk: action.risk,
     })),
     riskLevel: plan.riskLevel,

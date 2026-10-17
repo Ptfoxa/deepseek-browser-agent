@@ -108,6 +108,8 @@ pnpm test:e2e
 - 若本机没有 Chrome，可安装 Playwright Chromium 后将测试的 `channel` 改为 `chromium`。
 - 自动化测试不调用真实 DeepSeek API，不需要真实 API Key。真实连接测试需要你在扩展设置中自行配置 Key。
 
+本次实测环境与结果记录见 [docs/test-report.md](docs/test-report.md)。
+
 ## 权限用途
 
 | 权限 | 用途 | 边界 |

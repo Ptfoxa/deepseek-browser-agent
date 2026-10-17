@@ -64,6 +64,15 @@ export interface PageElement {
   readOnly: boolean;
   safeToClick?: boolean;
   riskReason?: string;
+  formIndex?: number;
+}
+
+export interface PageForm {
+  index: number;
+  method: string;
+  action: string;
+  fieldCount: number;
+  sensitiveFieldCount: number;
 }
 
 export interface PageSnapshot {
@@ -73,6 +82,7 @@ export interface PageSnapshot {
   headings: string[];
   links: Array<{ text: string; href: string }>;
   elements: PageElement[];
+  forms: PageForm[];
   formCount: number;
   sensitiveFieldCount: number;
   truncated: boolean;

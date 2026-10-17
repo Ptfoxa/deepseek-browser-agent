@@ -90,6 +90,7 @@ describe('structured plan protocol', () => {
           type: 'replace_text',
           target: 'el_001',
           value: 'y',
+          expected: 'y',
           risk: 'medium',
         },
       ],
@@ -100,6 +101,9 @@ describe('structured plan protocol', () => {
     };
     expect(ActionPlanSchema.safeParse(plan).success).toBe(false);
     expect(ActionPlanSchema.safeParse({ ...plan, requiresApproval: true }).success).toBe(true);
+    const withoutExpected = { ...plan, requiresApproval: true };
+    delete (withoutExpected.actions[0] as { expected?: string }).expected;
+    expect(ActionPlanSchema.safeParse(withoutExpected).success).toBe(false);
   });
 
   it('parses JSON wrapped in surrounding prose but never executes it', () => {

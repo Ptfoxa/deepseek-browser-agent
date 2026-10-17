@@ -7,8 +7,10 @@ const targets = [
   'tests',
   'scripts',
   '.github',
+  'docs',
   'dist',
   'README.md',
+  'SECURITY.md',
   '.env.example',
   'manifest.json',
 ];

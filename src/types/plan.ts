@@ -84,6 +84,7 @@ export const PlanActionSchema = z
     type: ActionTypeSchema,
     target: ElementIdSchema,
     value: ActionValueSchema.optional(),
+    expected: z.string().min(1).max(300),
     risk: RiskLevelSchema,
   })
   .strict();

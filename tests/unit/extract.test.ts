@@ -33,6 +33,9 @@ describe('page extraction', () => {
     expect(serialized).not.toContain('13812345678');
     expect(serialized).not.toContain('should-not-appear');
     expect(snapshot.sensitiveFieldCount).toBeGreaterThanOrEqual(2);
+    expect(snapshot.forms).toHaveLength(1);
+    expect(snapshot.forms[0]?.fieldCount).toBeGreaterThanOrEqual(4);
+    expect(snapshot.elements.find((element) => element.label === 'Username')?.formIndex).toBe(0);
     expect(snapshot.links[0]?.href).toBe('https://example.com/private');
     expect(snapshot.links[0]?.href).not.toContain('token');
     expect(snapshot.text).toContain('[邮箱已隐藏]');

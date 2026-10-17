@@ -47,6 +47,7 @@ function action(
     type,
     target,
     ...(value === undefined ? {} : { value }),
+    expected: '预期结果',
     risk: 'medium',
   };
 }
@@ -93,7 +94,14 @@ describe('allow-listed action executor', () => {
     expect(document.querySelector('h1')?.textContent).toBe('Old title');
 
     const missing = executeActions(ctx, [
-      { actionId: 'action_001', type: 'replace_text', target: 'el_999', value: 'x', risk: 'medium' },
+      {
+        actionId: 'action_001',
+        type: 'replace_text',
+        target: 'el_999',
+        value: 'x',
+        expected: 'x',
+        risk: 'medium',
+      },
     ]);
     expect(missing.ok).toBe(false);
     expect(missing.stale).toBe(true);

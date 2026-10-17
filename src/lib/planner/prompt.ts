@@ -44,6 +44,7 @@ export function serializePageForModel(snapshot: PageSnapshot): string {
     headings: snapshot.headings,
     links: snapshot.links,
     elements: snapshot.elements,
+    forms: snapshot.forms,
     formCount: snapshot.formCount,
     sensitiveFieldCount: snapshot.sensitiveFieldCount,
     truncated: snapshot.truncated,

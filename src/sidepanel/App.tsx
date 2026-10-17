@@ -14,6 +14,12 @@ const ACTION_LABELS: Record<string, string> = {
   click_element: '点击控件',
 };
 
+const RISK_LABELS: Record<string, string> = {
+  low: '低风险',
+  medium: '中风险',
+  high: '高风险',
+};
+
 const STATUS_TONE: Record<string, string> = {
   idle: 'neutral',
   reading: 'busy',
@@ -352,6 +358,7 @@ function PlanCard({
               <div className="action-title">
                 <strong>{ACTION_LABELS[preview.type] ?? preview.type}</strong>
                 <code>{preview.target}</code>
+                <span className={`action-risk ${preview.risk}`}>{RISK_LABELS[preview.risk]}</span>
               </div>
               <p className="target-label">{preview.targetLabel}</p>
               <div className="diff">

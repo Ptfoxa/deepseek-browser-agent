@@ -28,6 +28,7 @@ function snapshot(): PageSnapshot {
     text: 'Old title and some page text',
     headings: ['Old title'],
     links: [],
+    forms: [],
     elements: [
       {
         id: 'el_001',

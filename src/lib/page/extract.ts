@@ -1,4 +1,4 @@
-import type { ElementKind, PageElement, PageSnapshot } from '../../types/messages';
+import type { ElementKind, PageElement, PageForm, PageSnapshot } from '../../types/messages';
 import { redactPii } from '../security/sanitize';
 import { assessClickSafety } from '../security/risk';
 import { fingerprintDocument } from './fingerprint';
@@ -280,6 +280,7 @@ export function readPage(doc: Document, url: string): ReadPageResult {
   const registry = new Map<string, RegistryEntry>();
   const elements: PageElement[] = [];
   const candidates = [...doc.querySelectorAll(ELEMENT_SELECTOR)];
+  const formElements = [...doc.querySelectorAll('form')].slice(0, 20);
   let sensitiveFieldCount = 0;
 
   for (const element of candidates) {
@@ -320,6 +321,9 @@ export function readPage(doc: Document, url: string): ReadPageResult {
 
     const id = `el_${String(elements.length + 1).padStart(3, '0')}`;
     const descriptor = { ...built.descriptor, id };
+    const closestForm = element.closest('form');
+    const formIndex = closestForm ? formElements.indexOf(closestForm) : -1;
+    if (formIndex >= 0) descriptor.formIndex = formIndex;
     elements.push(descriptor);
     registry.set(id, {
       element,
@@ -354,6 +358,16 @@ export function readPage(doc: Document, url: string): ReadPageResult {
     .slice(0, PAGE_LIMITS.links);
 
   const { text, truncated } = extractVisibleText(doc);
+  const forms: PageForm[] = formElements.map((form, index) => {
+    const fields = [...form.querySelectorAll('input,textarea,select')];
+    return {
+      index,
+      method: normalizeText(form.method || 'get').toLowerCase().slice(0, 10),
+      action: safeHref(form.getAttribute('action') || url, url),
+      fieldCount: fields.length,
+      sensitiveFieldCount: fields.filter((field) => isSensitiveField(field as HTMLElement)).length,
+    };
+  });
   const snapshot: PageSnapshot = {
     title: truncate(redactPii(normalizeText(doc.title)), 200),
     url,
@@ -361,6 +375,7 @@ export function readPage(doc: Document, url: string): ReadPageResult {
     headings,
     links,
     elements,
+    forms,
     formCount: doc.querySelectorAll('form').length,
     sensitiveFieldCount,
     truncated,

@@ -15,6 +15,7 @@ function makePlan(): ActionPlan {
         type: 'replace_text',
         target: 'el_001',
         value: '新标题',
+        expected: '新标题',
         risk: 'medium',
       },
     ],

@@ -118,11 +118,13 @@ export function buildPlan(modelPlan: ModelPlan, context: BuildPlanContext): Buil
     }
 
     const actionId = `action_${String(index + 1).padStart(3, '0')}`;
+    const expected = truncate(nextDisplay(element, action.value), 300) || '清空内容';
     actions.push({
       actionId,
       type: action.type,
       target: action.target,
       ...(action.value === undefined ? {} : { value: action.value }),
+      expected,
       risk: risk.risk,
     });
     previews.push({

@@ -488,6 +488,26 @@ button:disabled {
   border-radius: 4px;
 }
 
+.action-risk {
+  margin-left: auto;
+  font-size: 8px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #fffaeb;
+  color: #93370d;
+  white-space: nowrap;
+}
+
+.action-risk.low {
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.action-risk.high {
+  background: #fef3f2;
+  color: var(--bad);
+}
+
 .target-label {
   margin: 3px 0 6px;
   font-size: 9.5px;
